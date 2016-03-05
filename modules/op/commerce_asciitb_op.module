@@ -1,0 +1,631 @@
+<?php
+
+/**
+ * @file
+ * Implements ASC-IITB Website Payments Standard in Drupal Commerce checkout.
+ */
+
+
+/**
+ * Implements hook_commerce_payment_method_info().
+ */
+function commerce_asciitb_op_commerce_payment_method_info() {
+  $payment_methods = array();
+
+  $payment_methods['asciitb_op'] = array(
+    'base' => 'commerce_asciitb_op',
+    'title' => t('ASC-IITB OP'),
+    'short_title' => t('ASC-IITB'),
+    'description' => t('ASC-IITB Website Payments Standard'),
+    'terminal' => FALSE,
+    'offsite' => TRUE,
+    'offsite_autoredirect' => TRUE,
+
+    // Because the order form generation code does not have access to a payment
+    // method info array, we set the bn directly there instead of making use of
+    // this buttonsource variable. It's here for consistency with other payment
+    // methods in this package.
+    'buttonsource' => 'CommerceGuys_Cart_PPS',
+  );
+
+  return $payment_methods;
+}
+
+/**
+ * Returns the default settings for the ASC-IITB OP payment method.
+ */
+function commerce_asciitb_op_default_settings() {
+  $default_currency = commerce_default_currency();
+
+  return array(
+    'ascappid' => '',
+    'purpose' => '',
+    'currency_code' => in_array($default_currency, array_keys(commerce_asciitb_currencies('asciitb_op'))) ? $default_currency : 'INR',
+    'allow_supported_currencies' => FALSE,
+    'language' => 'US',
+    'server' => 'sandbox',
+    'payment_action' => 'sale',
+    'ipn_logging' => 'notification',
+    'receiver_emails' => '',
+    'ipn_create_billing_profile' => FALSE,
+    'show_payment_instructions' => FALSE,
+  );
+}
+
+/**
+ * Payment method callback: settings form.
+ */
+function commerce_asciitb_op_settings_form($settings = array()) {
+  $form = array();
+
+  // Merge default settings into the stored settings array.
+  $settings = (array) $settings + commerce_asciitb_op_default_settings();
+
+
+  $form['ascappid'] = array(
+    '#type' => 'textfield',
+    '#title' => t('ASC-IITB AppID'),
+    '#description' => t('The application ID provided by ASC-IITB.'),
+    '#default_value' => $settings['ascappid'],
+    '#required' => TRUE,
+  );
+
+  $form['purpose'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Broad Purpose of the payment'),
+    '#description' => t('Enter the conference name, or other purposes.'),
+    '#default_value' => $settings['purpose'],
+    '#required' => TRUE,
+  );
+
+  /*
+  $form['business'] = array(
+    '#type' => 'textfield',
+    '#title' => t('ASC-IITB e-mail address'),
+    '#description' => t('The primary e-mail address of the ASC-IITB account you want to use to receive payments.'),
+    '#default_value' => $settings['business'],
+    '#required' => TRUE,
+  );*/
+
+  $form['currency_code'] = array(
+    '#type' => 'select',
+    '#title' => t('Default currency'),
+    '#description' => t('Transactions in other currencies will be converted to this currency, so multi-currency sites must be configured to use appropriate conversion rates.'),
+    '#options' => commerce_asciitb_currencies('asciitb_op'),
+    '#default_value' => $settings['currency_code'],
+  );
+  $form['allow_supported_currencies'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Allow transactions to use any currency in the options list above.'),
+    '#description' => t('Transactions in unsupported currencies will still be converted into the default currency.'),
+    '#default_value' => $settings['allow_supported_currencies'],
+  );
+  $form['language'] = array(
+    '#type' => 'select',
+    '#title' => t('ASC-IITB login page language / locale'),
+    '#options' => commerce_asciitb_op_languages(),
+    '#default_value' => $settings['language'],
+  );
+  $form['server'] = array(
+    '#type' => 'radios',
+    '#title' => t('ASC-IITB server'),
+    '#options' => array(
+      'sandbox' => ('Sandbox - use for testing, requires a ASC-IITB Sandbox account'),
+      'live' => ('Live - use for processing real transactions'),
+    ),
+    '#default_value' => $settings['server'],
+  );
+  $form['payment_action'] = array(
+    '#type' => 'radios',
+    '#title' => t('Payment action'),
+    '#options' => array(
+      'sale' => t('Sale - authorize and capture the funds at the time the payment is processed'),
+      'authorization' => t('Authorization - reserve funds on the card to be captured later through your ASC-IITB account'),
+    ),
+    '#default_value' => $settings['payment_action'],
+  );
+  $form['ipn_logging'] = array(
+    '#type' => 'radios',
+    '#title' => t('IPN logging'),
+    '#options' => array(
+      'notification' => t('Log notifications during IPN validation and processing.'),
+      'full_ipn' => t('Log notifications with the full IPN during validation and processing (used for debugging).'),
+    ),
+    '#default_value' => $settings['ipn_logging'],
+  );
+  $form['receiver_emails'] = array(
+    '#type' => 'textfield',
+    '#title' => t('ASC-IITB receiver e-mail addresses'),
+    '#description' => t('Enter the primary e-mail address for your ASC-IITB account if different from the one entered above or a comma separated list of all valid e-mail addresses on the account.') . '<br />' . t('IPNs that originate from payments made to a ASC-IITB account whose e-mail address is not in this list will not be processed.'),
+    '#default_value' => $settings['receiver_emails'],
+  );
+  $form['ipn_create_billing_profile'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Create a billing profile based on name and country data in the IPN for any order that does not have one yet.'),
+    '#description' => t('This is most useful for sites that do not collect billing information locally but still want to have customer names on orders.'),
+    '#default_value' => $settings['ipn_create_billing_profile'],
+  );
+  $form['show_payment_instructions'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show a message on the checkout form when ASC-IITB OP is selected telling the customer to "Continue with checkout to complete payment via ASC-IITB."'),
+    '#default_value' => $settings['show_payment_instructions'],
+  );
+
+  return $form;
+}
+
+/**
+ * Payment method callback: adds a message to the submission form if enabled in
+ * the payment method settings.
+ */
+function commerce_asciitb_op_submit_form($payment_method, $pane_values, $checkout_pane, $order) {
+  $form = array();
+
+  if (!empty($payment_method['settings']['show_payment_instructions'])) {
+    $form['asciitb_op_information'] = array(
+      '#markup' => '<span class="commerce-asciitb-op-info">' . t('(Continue with checkout to complete payment via ASC-IITB.)') . '</span>',
+    );
+  }
+
+  return $form;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function commerce_asciitb_op_form_commerce_checkout_form_alter(&$form, &$form_state) {
+  // If this checkout form contains the payment method radios...
+  if (!empty($form['commerce_payment']['payment_method']['#options'])) {
+    // Loop over its options array looking for a ASC-IITB OP option.
+    foreach ($form['commerce_payment']['payment_method']['#options'] as $key => &$value) {
+      list($method_id, $rule_name) = explode('|', $key);
+
+      // If we find ASC-IITB OP...
+      if ($method_id == 'asciitb_op') {
+        // Prepare the replacement radio button text with icons.
+        $icons = commerce_asciitb_icons();
+        $value = t('!logo ASC-IITB - pay securely without sharing your financial information', array('!logo' => $icons['asciitb']));
+        $value .= '<div class="commerce-asciitb-icons"><span class="label">' . t('Includes:') . '</span>' . implode(' ', $icons) . '</div>';
+
+        // Add the CSS.
+        $form['commerce_payment']['payment_method']['#attached']['css'][] = drupal_get_path('module', 'commerce_asciitb_op') . '/theme/commerce_asciitb_op.theme.css';
+
+        break;
+      }
+    }
+  }
+}
+
+/**
+ * Payment method callback: redirect form, a wrapper around the module's general
+ *   use function for building a OP form.
+ */
+function commerce_asciitb_op_redirect_form($form, &$form_state, $order, $payment_method) {
+  // Return an error if the enabling action's settings haven't been configured.
+  if (empty($payment_method['settings']['ascappid'])) {
+    drupal_set_message(t('ASC-IITB OP is not configured for use. No ASC-IITB Application ID has been specified.'), 'error');
+    return array();
+  }
+
+  if (empty($payment_method['settings']['purpose'])) {
+    drupal_set_message(t('ASC-IITB OP is not fully configured for use. The purpose has not been specified.'), 'error');
+    return array();
+  }
+
+
+  $settings = array(
+    // Return to the previous page when payment is canceled
+    'cancel_return' => url('checkout/' . $order->order_id . '/payment/back/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
+
+    // Return to the payment redirect page for processing successful payments
+    'return' => url('checkout/' . $order->order_id . '/payment/return/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
+
+    // Specify the current payment method instance ID in the notify_url
+    'payment_method' => $payment_method['instance_id'],
+
+    // Include the application indicator
+    'bn' => $payment_method['buttonsource'],
+  );
+
+  return commerce_asciitb_op_order_form($form, $form_state, $order, $payment_method['settings'] + $settings);
+}
+
+/**
+ * Payment method callback: redirect form return validation.
+ */
+function commerce_asciitb_op_redirect_form_validate($order, $payment_method) {
+  if (!empty($payment_method['settings']['ipn_logging']) &&
+    $payment_method['settings']['ipn_logging'] == 'full_ipn') {
+    watchdog('commerce_asciitb_op', 'Customer returned from ASC-IITB with the following GET data:!ipn_data', array('!ipn_data' => '<pre>' . check_plain(print_r($_GET, TRUE)) . '</pre>'), WATCHDOG_NOTICE);
+  }
+
+  // This may be an unnecessary step, but if for some reason the user does end
+  // up returning at the success URL with a Failed payment, go back.
+  if (!empty($_POST['status']) && $_POST['status'] == 'F') {
+    return FALSE;
+  }
+}
+
+
+
+/**
+ * Payment method callback: validate an IPN based on receiver e-mail address,
+ *   price, and other parameters as possible.
+ */
+/* Not applicable to ASC */
+function commerce_asciitb_op_asciitb_ipn_validate($order, $payment_method, $ipn) {
+  // Prepare a trimmed list of receiver e-mail addresses.
+  if (!empty($payment_method['settings']['receiver_emails'])) {
+    $receiver_emails = explode(',', $payment_method['settings']['receiver_emails']);
+  }
+  else {
+    $receiver_emails = array();
+  }
+
+  // Add the business e-mail address to the list of addresses.
+  $receiver_emails[] = $payment_method['settings']['business'];
+
+  foreach ($receiver_emails as $key => &$email) {
+    $email = trim(strtolower($email));
+  }
+
+  // Return FALSE if the receiver e-mail does not match one specified by the
+  // payment method instance.
+  if (!in_array(trim(strtolower($ipn['receiver_email'])), $receiver_emails)) {
+    commerce_payment_redirect_pane_previous_page($order);
+    watchdog('commerce_asciitb_op', 'IPN rejected: invalid receiver e-mail specified (@receiver_email); must match the primary e-mail address on the ASC-IITB account.', array('@receiver_email' => $ipn['receiver_email']), WATCHDOG_NOTICE);
+    return FALSE;
+  }
+  // Prepare the IPN data for inclusion in the watchdog message if enabled.
+  $ipn_data = '';
+
+  if (!empty($payment_method['settings']['ipn_logging']) &&
+    $payment_method['settings']['ipn_logging'] == 'full_ipn') {
+    $ipn_data = '<pre>' . check_plain(print_r($ipn, TRUE)) . '</pre>';
+  }
+
+  // Log a message including the ASC-IITB transaction ID if available.
+  if (!empty($ipn['transId'])) {
+    watchdog('commerce_asciitb_op', 'IPN validated for Order @order_number with ID @transId.!ipn_data', array('@order_number' => $order->order_number, '@transId' => $ipn['transId'], '!ipn_data' => $ipn_data), WATCHDOG_NOTICE);
+  }
+  else {
+    watchdog('commerce_asciitb_op', 'IPN validated for Order @order_number.!ipn_data', array('@order_number' => $order->order_number, '!ipn_data' => $ipn_data), WATCHDOG_NOTICE);
+  }
+}
+
+/**
+ * Payment method callback: process an IPN once it's been validated.
+ */
+function commerce_asciitb_op_asciitb_ipn_process($order, $payment_method, &$ipn) {
+  // Do not perform any processing on OP transactions here that do not have
+  // transaction IDs, indicating they are non-payment IPNs such as those used
+  // for subscription signup requests.
+  if (empty($ipn['transId'])) {
+    return FALSE;
+  }
+
+  // Exit when we don't get a payment status we recognize.
+  if (!in_array($ipn['status'], array('F', 'S' ))) {
+    commerce_payment_redirect_pane_previous_page($order);
+    return FALSE;
+  }
+
+  // If this is a prior authorization capture IPN for which we've already
+  // created a transaction...
+  if (in_array($ipn['status'], array('S')) &&
+    !empty($ipn['auth_id']) && $auth_ipn = commerce_asciitb_ipn_load($ipn['auth_id'])) {
+    // Load the prior IPN's transaction and update that with the capture values.
+    $transaction = commerce_payment_transaction_load($auth_ipn['transaction_id']);
+  }
+  else {
+    // Create a new payment transaction for the order.
+    $transaction = commerce_payment_transaction_new('asciitb_op', $order->order_id);
+    $transaction->instance_id = $payment_method['instance_id'];
+  }
+
+  $transaction->remote_id = $ipn['transId'];
+  $transaction->amount = commerce_currency_decimal_to_amount($ipn['totalAmt'], $ipn['mc_currency']);
+  $transaction->currency_code = $ipn['mc_currency'];
+  $transaction->payload[REQUEST_TIME . '-ipn'] = $ipn;
+
+  // Set the transaction's statuses based on the IPN's status.
+  $transaction->remote_status = $ipn['status'];
+
+  // If we didn't get an approval response code...
+  switch ($ipn['status']) {
+    case 'F':
+      $transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
+      $transaction->message = t("The payment has failed.");
+      break;
+
+    case 'S':
+      $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+      $transaction->message = t('The payment was successful.');
+      break;
+  }
+
+  // Save the transaction information.
+  commerce_payment_transaction_save($transaction);
+  $ipn['transaction_id'] = $transaction->transaction_id;
+
+    echo '<pre>'; echo 'transaction saved ' ; echo '</pre>';
+
+
+  /* Not applicable to ASC 
+  // Create a billing profile based on the IPN if enabled.
+  if (!empty($payment_method['settings']['ipn_create_billing_profile']) && isset($order->commerce_customer_billing)) {
+    $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+
+    // If this order does not have a billing profile yet...
+    if ($order_wrapper->commerce_customer_billing->value() === NULL) {
+      // Ensure we have the required data in the IPN.
+      if (empty($ipn['residence_country']) || empty($ipn['first_name']) || empty($ipn['last_name'])) {
+        $data = array_intersect_key($ipn, drupal_map_assoc(array('residence_country', 'first_name', 'last_name')));
+        watchdog('commerce_asciitb_op', 'A billing profile for Order @order_number could not be created due to insufficient data in the IPN:!data', array('@order_number' => $order->order_number, '!data' => '<pre>'. check_plain(print_r($data, TRUE)) .'</pre>'), WATCHDOG_WARNING);
+      }
+      else {
+        // Create the new profile now.
+        $profile = commerce_customer_profile_new('billing', $order->uid);
+
+        // Add the address value.
+        $profile_wrapper = entity_metadata_wrapper('commerce_customer_profile', $profile);
+
+        $profile_wrapper->commerce_customer_address = array_merge(addressfield_default_values(), array(
+          'country' => $ipn['residence_country'],
+          'name_line' => $ipn['first_name'] . ' ' . $ipn['last_name'],
+          'first_name' => $ipn['first_name'],
+          'last_name' => $ipn['last_name'],
+        ));
+
+        // Save the profile, reference it from the order, and save the order.
+        $profile_wrapper->save();
+        $order_wrapper->commerce_customer_billing = $profile_wrapper;
+        $order_wrapper->save();
+
+        watchdog('commerce_asciitb_op', 'Billing profile created for Order @order_number containing the first and last names and residence country of the customer based on IPN data.', array('@order_number' => $order->order_number));
+      }
+    }
+  }
+    */
+
+
+
+  commerce_payment_redirect_pane_next_page($order);
+  watchdog('commerce_asciitb_op', 'IPN processed for Order @order_number with ID @transId.', array('@transId' => $ipn['transId'], '@order_number' => $order->order_number), WATCHDOG_INFO);
+}
+
+/**
+ * Builds a Website Payments Standard form from an order object.
+ *
+ * @param $order
+ *   The fully loaded order being paid for.
+ * @param $settings
+ *   An array of settings used to build out the form, including:
+ *   - server: which server to use, either sandbox or live
+ *   - ascappid: the ASC-IITB Application ID the payment submits to
+ *   - purpose: the broad purpose of the payment 
+ *   - cancel_return: the URL ASC-IITB should send the user to on cancellation
+ *   - return: the URL ASC-IITB should send the user to on successful payment
+ *   - currency_code: the ASC-IITB currency code to use for this payment if the
+ *     total for the order is in a non-ASC-IITB supported currency
+ *   - language: the ASC-IITB language code to use on the payment form
+ *   - payment_action: the ASC-IITB payment action to use: sale, authorization,
+ *     or order
+ *   - payment_method: optionally a payment method instance ID to include in the
+ *     IPN notify_url
+ *
+ * @return
+ *   A renderable form array.
+ */
+function commerce_asciitb_op_order_form($form, &$form_state, $order, $settings) {
+  $wrapper = entity_metadata_wrapper('commerce_order', $order);
+
+  // Determine the currency code to use to actually process the transaction,
+  // which will either be the default currency code or the currency code of the
+  // order if it's supported by ASC-IITB if that option is enabled.
+  $currency_code = $settings['currency_code'];
+  $order_currency_code = $wrapper->commerce_order_total->currency_code->value();
+
+  if (!empty($settings['allow_supported_currencies']) && in_array($order_currency_code, array_keys(commerce_asciitb_currencies('asciitb_op')))) {
+    $currency_code = $order_currency_code;
+  }
+
+  $amount = $wrapper->commerce_order_total->amount->value();
+
+  // Ensure a default value for the payment_method setting.
+  $settings += array('payment_method' => '');
+
+  /*
+  // Build the data array that will be translated into hidden form values.
+  $data = array(
+    // Specify the checkout experience to present to the user.
+    'cmd' => '_cart',
+
+    // Signify we're passing in a shopping cart from our system.
+    'upload' => 1,
+
+    // The store's ASC-IITB e-mail address
+    'business' => $settings['business'],
+
+    // The path ASC-IITB should send the IPN to
+    'notify_url' => commerce_asciitb_ipn_url($settings['payment_method']),
+
+    // The application generating the API request
+    'bn' => 'CommerceGuys_Cart_PPS',
+
+    // Set the correct character set
+    'charset' => 'utf-8',
+
+    // Do not display a comments prompt at ASC-IITB
+    'no_note' => 1,
+
+    // Do not display a shipping address prompt at ASC-IITB
+    'no_shipping' => 1,
+
+    // Return to the review page when payment is canceled
+    'cancel_return' => $settings['cancel_return'],
+
+    // Return to the payment redirect page for processing successful payments
+    'return' => $settings['return'],
+
+    // Return to this site with payment data in the POST
+    'rm' => 2,
+
+    // The type of payment action ASC-IITB should take with this order
+    'paymentaction' => $settings['payment_action'],
+
+    // Set the currency and language codes
+    'currency_code' => $currency_code,
+    'lc' => $settings['language'],
+
+    // Use the timestamp to generate a unique invoice number
+    'invoice' => commerce_asciitb_ipn_invoice($order),
+
+    // Define a single item in the cart representing the whole order
+    'amount_1' => commerce_asciitb_price_amount(commerce_currency_convert($amount, $order_currency_code, $currency_code), $currency_code),
+    'item_name_1' => t('Order @order_number at @store', array('@order_number' => $order->order_number, '@store' => variable_get('site_name', url('<front>', array('absolute' => TRUE))))),
+    'on0_1' => t('Product count'),
+    'os0_1' => commerce_line_items_quantity($wrapper->commerce_line_items, commerce_product_line_item_types()),
+  );
+  */
+
+// sAppId=13142&sUserId=PM2123442&sUserName=Abhishek &sAmountDue=300.0&sPurpose=Application Fee&sReqId
+
+  // Build the data array that will be translated into hidden form values.
+  /*
+  $data = array(
+   // Message prefix
+   'sMsg' => ' ',
+   
+    //AppId
+   'sAppId' => 13142,
+
+   //User ID
+   'sUserId' => 12,
+
+   //User Name
+   'sUserName' => 'Sunthar P',
+
+   //Amount Due
+   'sAmountDue' => commerce_asciitb_price_amount(commerce_currency_convert($amount, $order_currency_code, $currency_code), $currency_code),
+
+   //Purpose
+   'sPurpose' => 'Reg fee',
+
+   //Unique Request ID
+   'sReqId' => $order->order_number, 
+   
+  );
+  */
+
+  //$AppId=13423;
+
+  #$AppId=$payment_method['settings']['ascappid'];
+  $AppId=$settings['ascappid'];
+
+  //$UserId=43;
+  $UserId=$order->uid;
+
+  //$UserName='Sunthar P Murthy';
+  $UserName=commerce_order_get_properties($order,array(),'mail_username');
+
+
+  $AmountDue=commerce_asciitb_price_amount(commerce_currency_convert($amount, $order_currency_code, $currency_code), $currency_code);
+
+
+  //$Purpose='Registration Fee';
+  $Purpose=$settings['purpose'];
+  // Define a single item in the cart representing the whole order
+  //$Purpose = commerce_line_items_quantity($wrapper->commerce_line_items, commerce_product_line_item_types());
+  //$Purpose = $wrapper->commerce_line_items, commerce_product_line_item_types());
+
+  //$ReqId=$order->order_number;
+  // Use the timestamp to generate a unique invoice number
+  $ReqId=commerce_asciitb_ipn_invoice($order);
+
+  $smsg="sAppId=$AppId%26sUserId=$UserId%26sUserName=$UserName%26sAmountDue=$AmountDue%26sPurpose=$Purpose%26sReqId=$ReqId";
+
+
+  $data = array('sMsg' => $smsg);
+
+  // Allow modules to alter parameters of the API request.
+  drupal_alter('commerce_asciitb_op_order_form_data', $data, $order);
+
+  $form['#action'] = commerce_asciitb_op_server_url($settings['server']);
+
+  foreach ($data as $name => $value) {
+    if (!empty($value)) {
+      $form[$name] = array('#type' => 'hidden', '#value' => $value);
+    }
+  }
+
+  $form['#method'] = 'get';
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Proceed to ASC-IITB'),
+  );
+
+  return $form;
+}
+
+/**
+ * Returns the URL to the specified ASC-IITB OP server.
+ *
+ * @param $server
+ *   Either sandbox or live indicating which server to get the URL for.
+ *
+ * @return
+ *   The URL to use to submit requests to the ASC-IITB OP server.
+ */
+function commerce_asciitb_op_server_url($server) {
+  switch ($server) {
+    case 'sandbox':
+      #return 'https://www.sandbox.asciitb.com/cgi-bin/webscr';
+      return 'http://www.iitb.ac.in/paygtest/getmesg.php';
+    case 'live':
+      return 'http://www.iitb.ac.in/paygtest/getmesg.php';
+  }
+}
+
+/**
+ * Returns an array of all possible language codes.
+ */
+function commerce_asciitb_op_languages() {
+  return array(
+    t('By country') => array(
+      'AU' => t('Australia'),
+      'AT' => t('Austria'),
+      'BE' => t('Belgium'),
+      'BR' => t('Brazil'),
+      'CA' => t('Canada'),
+      'CN' => t('China'),
+      'FR' => t('France'),
+      'DE' => t('Germany'),
+      'IT' => t('Italy'),
+      'NL' => t('Netherlands'),
+      'PL' => t('Poland'),
+      'PT' => t('Portugal'),
+      'RU' => t('Russia'),
+      'ES' => t('Spain'),
+      'CH' => t('Switzerland'),
+      'GB' => t('United Kingdom'),
+      'US' => t('United States'),
+    ),
+    t('By language') => array(
+      'da_DK' => t('Danish (for Denmark only)'),
+      'he_IL' => t('Hebrew (for all)'),
+      'id_ID' => t('Indonesian (for Indonesia only)'),
+      'jp_JP' => t('Japanese (for Japan only)'),
+      'no_NO' => t('Norwegian (for Norway only)'),
+      'pt_BR' => t('Brazilian Portuguese (for Portugal and Brazil only)'),
+      'ru_RU' => t('Russian (for Lithuania, Latvia, and Ukraine only)'),
+      'sv_SE' => t('Swedish (for Sweden only)'),
+      'th_TH' => t('Thai (for Thailand only)'),
+      'tr_TR' => t('Turkish (for Turkey only)'),
+      'zh_CN' => t('Simplified Chinese (for China only)'),
+      'zh_HK' => t('Traditional Chinese (for Hong Kong only)'),
+      'zh_TW' => t('Traditional Chinese (for Taiwan only)'),
+    ),
+  );
+}
