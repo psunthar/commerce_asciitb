@@ -21,7 +21,7 @@ function commerce_asciitb_menu() {
   );
 
   // Define a payment method specific path
-  $items['commerce_asciitb/ipn/spay'] = array(
+  $items['commerce_asciitb/ipn/simp'] = array(
     'page callback' => 'commerce_asciitb_process_ipn_pm',
     'page arguments' => array(2),
     'access callback' => TRUE,
@@ -60,6 +60,30 @@ function commerce_asciitb_ipn_url($instance_id = NULL) {
 }
 
 /**
+ * Forward the incoming IPN data to the method specific processor
+ *
+ * @param $payment_method_short
+ *    Short label for the payment method name
+ *
+ * @return
+ *   TRUE or FALSE indicating whether the IPN was successfully processed or not.
+ */
+
+function commerce_asciitb_process_ipn_pm($pmshort) {
+  // Since ASC does not use a notify_url the default method process_ipn
+  // cannot be used. The payment method instance is loaded here instead.
+
+  switch ($pmshort) {
+    case 'simp':
+      $payment_method = commerce_payment_method_instance_load('asciitb_simp|commerce_payment_asciitb_simp');
+  }
+
+  return commerce_asciitb_process_ipn($payment_method);
+
+}
+
+
+/**
  * Processes an incoming IPN.
  *
  * @param $payment_method
@@ -96,7 +120,11 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
 
     #$ipn = drupal_get_query_parameters($Msg);
 
-    $payment_method = commerce_payment_method_instance_load('asciitb_sim|commerce_payment_asciitb_sim');
+    echo 'loaded instance <br/>';
+    print_r ($payment_method);
+
+
+    #$pm = commerce_payment_method_instance_load('asciitb_simp|commerce_payment_asciitb_simp');
    /*
     echo 'loaded instance <br/>';
     print_r ($pm);
@@ -520,7 +548,7 @@ function commerce_asciitb_reverse_payment_action($payment_action) {
  */
 function commerce_asciitb_currencies($method_id) {
   switch ($method_id) {
-    case 'asciitb_sim':
+    case 'asciitb_simp':
       return drupal_map_assoc(array('INR', 'AUD', 'BRL', 'CAD', 'CHF', 'CZK', 'DKK', 'EUR', 'GBP', 'HKD', 'HUF', 'ILS', 'JPY', 'MXN', 'MYR', 'NOK', 'NZD', 'PHP', 'PLN', 'SEK', 'SGD', 'THB', 'TRY', 'TWD', 'USD'));
   }
 }

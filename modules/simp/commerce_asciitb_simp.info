@@ -1,5 +1,5 @@
-name = ASC-IITB OP
-description = Implements ASC-IITB Website Payments Standard in Drupal Commerce checkout.
+name = ASC-IITB Simple Pay
+description = Implements ASC-IITB Simple Payments in Drupal Commerce checkout.
 package = Commerce (ASC-IITB)
 dependencies[] = commerce
 dependencies[] = commerce_ui
