@@ -54,7 +54,7 @@
  *   The IPN array received from ASC-IITB after it has been saved, including the
  *   additional ipn_id, order_id, and transaction_id values.
  *
- * @see commerce_asciitb_op_asciitb_ipn_process()
+ * @see commerce_asciitb_simp_asciitb_ipn_process()
  */
 function hook_commerce_asciitb_ipn_process($order, $payment_method, $ipn) {
   // No example.

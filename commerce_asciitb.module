@@ -105,7 +105,8 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
     $msg = $_GET['sMsg'];
     
 
-    echo '<pre>'; print_r($_GET);
+    //echo '<pre>'; 
+    //print_r($_GET);
     
     parse_str($msg,$ipn);
 
@@ -121,20 +122,22 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
     #$ipn = drupal_get_query_parameters($Msg);
 
     echo 'loaded instance <br/>';
+    echo '<pre>';
     print_r ($payment_method);
+    echo '</pre>';
 
 
     #$pm = commerce_payment_method_instance_load('asciitb_simp|commerce_payment_asciitb_simp');
+    //echo 'loaded instance <br/>';
+    //print_r ($pm);
    /*
-    echo 'loaded instance <br/>';
-    print_r ($pm);
 
     echo 'All methods <br/>';
     $pms = commerce_payment_methods();
     print_r ($pms);
 */
 
-    print_r($ipn); echo '</pre>'; 
+    echo '<pre>'; print_r($ipn); echo '</pre>'; 
 
 
     // Exit now if the $_GET was empty.
@@ -180,8 +183,6 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
     $ipn = $debug_ipn;
   }
 
-  echo " ipn logging = " . $payment_method['settings']['ipn_logging'] ." <br/>" ; 
-
   // If the payment method specifies full IPN logging, do it now.
   if (!empty($payment_method['settings']['ipn_logging']) &&
     $payment_method['settings']['ipn_logging'] == 'full_ipn') {
@@ -193,8 +194,6 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
     }
   }
 
-    watchdog('commerce_asciitb', 'Full IPN log passed.', array(), WATCHDOG_NOTICE);
-
   // Exit if the IPN has already been processed.
   if (!empty($ipn['transId']) && $prior_ipn = commerce_asciitb_ipn_load($ipn['transId'])) {
     if ($prior_ipn['status'] == $ipn['status']) {
@@ -205,22 +204,20 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
     echo '<pre>'; echo 'IPN already processed' ; echo '</pre>';
   }
 
-  // Load the order based on the IPN's invoice number.
-  /*
-  if (!empty($ipn['invoice']) && strpos($ipn['invoice'], '-') !== FALSE) {
-    list($ipn['reqId'], $timestamp) = explode('-', $ipn['invoice']);
+  // Load the order based on the IPN's invoice number (reqId).
+  if (!empty($ipn['reqId']) && strpos($ipn['reqId'], '-') !== FALSE) {
+    list($ipn['order_id'], $timestamp) = explode('-', $ipn['reqId']);
   }
-  elseif (!empty($ipn['invoice'])) {
-    $ipn['reqId'] = $ipn['invoice'];
+  elseif (!empty($ipn['reqId'])) {
+    $ipn['order_id'] = $ipn['reqId'];
   }
   else {
-    $ipn['reqId'] = 0;
+    $ipn['order_id'] = 0;
     $timestamp = 0;
   }
-  */
 
-  if (!empty($ipn['reqId'])) {
-    $order = commerce_order_load($ipn['reqId']);
+  if (!empty($ipn['order_id'])) {
+    $order = commerce_order_load($ipn['order_id']);
   }
   else {
     $order = FALSE;
@@ -248,7 +245,7 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
   if (!empty($payment_method)) {
     $callback = $payment_method['base'] . '_asciitb_ipn_process';
 
-    echo '<pre>'; echo 'IPN process callback ' ; echo '</pre>';
+    //echo '<pre>'; echo 'IPN process callback ' ; echo '</pre>';
 
     // If a processing function exists...
     if (function_exists($callback)) {
@@ -291,7 +288,7 @@ function commerce_asciitb_ipn_load($id, $type = 'txn_id') {
  * Saves an IPN with some meta data related to local processing.
  *
  * @param $ipn
- *   An IPN array with additional parameters for the reqId and Commerce
+ *   An IPN array with additional parameters for the order_id and Commerce
  *     Payment transaction_id associated with the IPN.
  *
  * @return
@@ -329,7 +326,7 @@ function commerce_asciitb_ipn_delete($id, $type = 'txn_id') {
 }
 
 /**
- * Returns a unique invoice number based on the Order ID and timestamp.
+ * Returns a unique invoice number (reqId) based on the Order ID and timestamp.
  */
 function commerce_asciitb_ipn_invoice($order) {
   return $order->order_id . '-' . REQUEST_TIME;

@@ -9,7 +9,7 @@ dependencies[] = commerce_asciitb
 core = 7.x
 
 ; Simple tests
-; files[] = tests/commerce_asciitb_op.test
+; files[] = tests/commerce_asciitb_simp.test
 
 ; Information added by Drupal.org packaging script on 2014-01-14
 version = "7.x-2.3"

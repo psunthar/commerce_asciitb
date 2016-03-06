@@ -15,8 +15,8 @@
  * @param $order
  *   The full order object the redirect form is being generated for.
  *
- * @see commerce_asciitb_op_order_form()
+ * @see commerce_asciitb_simp_order_form()
  */
-function hook_commerce_asciitb_op_order_form_data_alter(&$data, $order) {
+function hook_commerce_asciitb_simp_order_form_data_alter(&$data, $order) {
   // No example.
 }

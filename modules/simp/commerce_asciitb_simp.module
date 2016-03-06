@@ -389,7 +389,6 @@ function commerce_asciitb_simp_asciitb_ipn_process($order, $payment_method, &$ip
     */
 
 
-
   commerce_payment_redirect_pane_next_page($order);
   watchdog('commerce_asciitb_simp', 'IPN processed for Order @order_number with ID @transId.', array('@transId' => $ipn['transId'], '@order_number' => $order->order_number), WATCHDOG_INFO);
 }
