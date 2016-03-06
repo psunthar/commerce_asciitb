@@ -20,6 +20,15 @@ function commerce_asciitb_menu() {
     'type' => MENU_CALLBACK,
   );
 
+  // Define a payment method specific path
+  $items['commerce_asciitb/ipn/spay'] = array(
+    'page callback' => 'commerce_asciitb_process_ipn_pm',
+    'page arguments' => array(2),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+
+
   // Define an additional IPN path that is payment method / instance specific.
   $items['commerce_asciitb/ipn/%commerce_payment_method_instance'] = array(
     'page callback' => 'commerce_asciitb_process_ipn',
@@ -57,7 +66,7 @@ function commerce_asciitb_ipn_url($instance_id = NULL) {
  *   The payment method instance array that originally made the payment.
  * @param $debug_ipn
  *   Optionally specify an IPN array for debug purposes; if left empty, the IPN
- *     be pulled from the $_POST. If an IPN is passed in, validation of the IPN
+ *     be pulled from the $_GET. If an IPN is passed in, validation of the IPN
  *     at ASC-IITB will be bypassed.
  *
  * @return
@@ -71,7 +80,8 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
     //$ipn = $_POST;
     $msg = $_GET['sMsg'];
     
-    //echo '<pre>'; print_r($_GET);
+
+    echo '<pre>'; print_r($_GET);
     
     parse_str($msg,$ipn);
 
@@ -82,10 +92,22 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
     $ipn['mc_currency'] = 'INR';
 
 
-    watchdog('commerce_asciitb', 'IPN URL processed from GET data submitted.', array(), WATCHDOG_INFO);
+    watchdog('commerce_asciitb', 'IPN URL processed from GET data submitted.', array(), WATCHDOG_NOTICE);
 
     #$ipn = drupal_get_query_parameters($Msg);
-    //print_r($ipn); echo '</pre>'; 
+
+    $payment_method = commerce_payment_method_instance_load('asciitb_sim|commerce_payment_asciitb_sim');
+   /*
+    echo 'loaded instance <br/>';
+    print_r ($pm);
+
+    echo 'All methods <br/>';
+    $pms = commerce_payment_methods();
+    print_r ($pms);
+*/
+
+    print_r($ipn); echo '</pre>'; 
+
 
     // Exit now if the $_GET was empty.
     if (empty($ipn)) {
@@ -129,6 +151,8 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
   else {
     $ipn = $debug_ipn;
   }
+
+  echo " ipn logging = " . $payment_method['settings']['ipn_logging'] ." <br/>" ; 
 
   // If the payment method specifies full IPN logging, do it now.
   if (!empty($payment_method['settings']['ipn_logging']) &&
@@ -496,7 +520,7 @@ function commerce_asciitb_reverse_payment_action($payment_action) {
  */
 function commerce_asciitb_currencies($method_id) {
   switch ($method_id) {
-    case 'asciitb_op':
+    case 'asciitb_sim':
       return drupal_map_assoc(array('INR', 'AUD', 'BRL', 'CAD', 'CHF', 'CZK', 'DKK', 'EUR', 'GBP', 'HKD', 'HUF', 'ILS', 'JPY', 'MXN', 'MYR', 'NOK', 'NZD', 'PHP', 'PLN', 'SEK', 'SGD', 'THB', 'TRY', 'TWD', 'USD'));
   }
 }
