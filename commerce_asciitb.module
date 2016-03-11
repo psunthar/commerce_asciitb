@@ -78,7 +78,8 @@ function commerce_asciitb_process_ipn_pm($pmshort) {
       $payment_method = commerce_payment_method_instance_load('asciitb_simp|commerce_payment_asciitb_simp');
   }
 
-  return commerce_asciitb_process_ipn($payment_method);
+  $redirect_url = commerce_asciitb_process_ipn($payment_method);
+  //drupal_goto($redirect_url);
 
 }
 
@@ -121,10 +122,13 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
 
     #$ipn = drupal_get_query_parameters($Msg);
 
+   
+   /*
     echo 'loaded instance <br/>';
     echo '<pre>';
     print_r ($payment_method);
     echo '</pre>';
+*/
 
 
     #$pm = commerce_payment_method_instance_load('asciitb_simp|commerce_payment_asciitb_simp');
@@ -137,7 +141,7 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
     print_r ($pms);
 */
 
-    echo '<pre>'; print_r($ipn); echo '</pre>'; 
+    //echo '<pre>'; print_r($ipn); echo '</pre>'; 
 
 
     // Exit now if the $_GET was empty.
@@ -223,6 +227,14 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
     $order = FALSE;
   }
 
+   /*
+    echo 'loaded order <br/>';
+    echo '<pre>';
+    print_r ($order);
+    echo '</pre>';
+*/
+
+
 
   /* No applicable to ASC
   // Give the payment method module an opportunity to validate the receiver
@@ -262,6 +274,61 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
   // payment method if available and a saved IPN array that includes the payment
   // transaction ID if created in the payment method's default process callback.
   module_invoke_all('commerce_asciitb_ipn_process', $order, $payment_method, $ipn);
+
+
+   // Return to the previous page when payment is canceled
+   $cancel_return_url = url('checkout/' . $order->order_id . '/payment/back/' . $order->data['payment_redirect_key'], array('absolute' => TRUE));
+
+   // Return to the payment redirect page for processing successful payments
+   $return_url = url('checkout/' . $order->order_id . '/payment/return/' . $order->data['payment_redirect_key'], array('absolute' => TRUE));
+
+
+   $return_path = '/checkout/' . $order->order_id . '/payment/return/' . $order->data['payment_redirect_key'];
+
+  //echo "<br/> $cancel_return_url";
+  //drupal_goto($cancel_return_url);
+  //echo "<br/> $return_url";
+   /*
+*/
+
+   $return_path = '/checkout/' . $order->order_id ;
+
+/*
+    echo 'ipn processed order <br/>';
+    echo '<pre>';
+    print_r ($order);
+    echo '</pre>';
+*/
+  
+  echo "<br/> <a href=" . $return_path .">return path</a>";
+  echo "<br/> <a href=" . $return_url .">return url</a>";
+  #drupal_goto('/user/1/orders');
+  #drupal_goto($return_path);
+
+  #$target_uri = commerce_checkout_order_uri($order);
+  #echo "<br/> <a href=" . $target_uri .">return url</a>";
+  #drupal_goto($target_uri);
+
+  $path=$return_url;
+  $http_response_code = 302;
+  echo "<br/>path: $path";
+  
+  $options=array();
+
+  //drupal_alter('drupal_goto', $path, array(), $http_response_code);
+  //drupal_alter('drupal_goto', $path, $options, $http_response_code);
+  $options['absolute'] = TRUE;
+
+  $url = url($path, $options);
+
+  echo "<br/>path post alter: $path";
+  echo "<br/>url: $url";
+  //header('Location: ' . $url, TRUE, $http_response_code);
+  header('Location: ' . $url);
+  
+  #drupal_goto($return_path);
+  //drupal_exit($url);
+  //return $return_path;
 }
 
 /**

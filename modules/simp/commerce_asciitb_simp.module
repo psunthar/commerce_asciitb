@@ -2,7 +2,7 @@
 
 /**
  * @file
- * Implements ASC-IITB Website Payments Standard in Drupal Commerce checkout.
+ * Implements ASC-IITB Simple Payment in Drupal Commerce checkout.
  */
 
 
@@ -208,10 +208,9 @@ function commerce_asciitb_simp_redirect_form($form, &$form_state, $order, $payme
   }
 
   if (empty($payment_method['settings']['purpose'])) {
-    drupal_set_message(t('ASC-IITB Simple Pay is not fully configured for use. The purpose has not been specified.'), 'error');
+    drupal_set_message(t('ASC-IITB Simple Pay is not fully configured for use. The purpose has to be specified.'), 'error');
     return array();
   }
-
 
   $settings = array(
     // Return to the previous page when payment is canceled
@@ -348,7 +347,7 @@ function commerce_asciitb_simp_asciitb_ipn_process($order, $payment_method, &$ip
   commerce_payment_transaction_save($transaction);
   $ipn['transaction_id'] = $transaction->transaction_id;
 
-    echo '<pre>'; echo 'transaction saved ' ; echo '</pre>';
+    //echo '<pre>'; echo 'transaction saved ' ; echo '</pre>';
 
 
   /* Not applicable to ASC 
@@ -543,19 +542,27 @@ function commerce_asciitb_simp_order_form($form, &$form_state, $order, $settings
   $ReqId=commerce_asciitb_ipn_invoice($order);
 
   $smsg="sAppId=$AppId%26sUserId=$UserId%26sUserName=$UserName%26sAmountDue=$AmountDue%26sPurpose=$Purpose%26sReqId=$ReqId";
+  $smsg="sAppId=$AppId&sUserId=$UserId&sUserName=$UserName&sAmountDue=$AmountDue&sPurpose=$Purpose&sReqId=$ReqId";
 
 
   $data = array(
    //Formatted string required by ASC
      'sMsg' => $smsg,
 
+   /*
     // The path ASC-IITB should send the IPN to
     'notify_url' => commerce_asciitb_ipn_url($settings['payment_method']),
 
+    // Return to the review page when payment is canceled
+    'cancel_return' => $settings['cancel_return'],
+
+    // Return to the payment redirect page for processing successful payments
+    'return' => $settings['return'],
+   */
 );
 
   // Allow modules to alter parameters of the API request.
-  drupal_alter('commerce_asciitb_simp_order_form_data', $data, $order);
+  //drupal_alter('commerce_asciitb_simp_order_form_data', $data, $order);
 
   $form['#action'] = commerce_asciitb_simp_server_url($settings['server']);
 
@@ -587,10 +594,11 @@ function commerce_asciitb_simp_order_form($form, &$form_state, $order, $settings
 function commerce_asciitb_simp_server_url($server) {
   switch ($server) {
     case 'sandbox':
-      #return 'https://www.sandbox.asciitb.com/cgi-bin/webscr';
       return 'http://www.iitb.ac.in/paygtest/getmesg.php';
+      #return 'http://10.99.99.139:8080/onlinepay/commJsp/v2_accessPoint.jsp';
     case 'live':
-      return 'http://www.iitb.ac.in/paygtest/getmesg.php';
+      #return 'http://www.iitb.ac.in/paygtest/getmesg.php';
+      return 'http://www.iitb.ac.in/onlinepay/commJsp/v2_accessPoint.jsp';
   }
 }
 
