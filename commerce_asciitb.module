@@ -6,6 +6,12 @@
  */
 
 
+// Local payment transaction status definitions:
+define('COMMERCE_PAYMENT_Recon_STATUS_Rejected', 'rejected');
+define('COMMERCE_PAYMENT_Recon_STATUS_Reconciled', 'reconciled');
+
+
+
 /**
  * Implements hook_menu().
  */
@@ -78,9 +84,10 @@ function commerce_asciitb_process_ipn_pm($pmshort) {
       $payment_method = commerce_payment_method_instance_load('asciitb_simp|commerce_payment_asciitb_simp');
   }
 
-  $redirect_url = commerce_asciitb_process_ipn($payment_method);
-  //drupal_goto($redirect_url);
 
+  commerce_asciitb_process_ipn($payment_method);
+  //$redirect_url = commerce_asciitb_process_ipn($payment_method);
+  //drupal_goto($redirect_url);
 }
 
 
@@ -103,13 +110,22 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
   // $_GET array at this point, so we don't need to worry about them.
   if (empty($debug_ipn)) {
     //$ipn = $_POST;
+
     $msg = $_GET['sMsg'];
-    
 
     //echo '<pre>'; 
     //print_r($_GET);
     
     parse_str($msg,$ipn);
+
+    // Exit now if the $_GET was empty.
+    if (empty($ipn)) {
+      watchdog('commerce_asciitb', 'IPN URL accessed with no GET data submitted.', array(), WATCHDOG_WARNING);
+      return FALSE;
+    }
+    else {
+      watchdog('commerce_asciitb', 'IPN URL processed from GET data submitted.', array(), WATCHDOG_NOTICE);
+    }
 
     // this is missed out otherwise
     $ipn['q'] = $_GET['q'];
@@ -117,8 +133,8 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
     // some defaults
     $ipn['mc_currency'] = 'INR';
 
+    //echo 'IPN <pre>'; print_r($ipn); echo '</pre>'; 
 
-    watchdog('commerce_asciitb', 'IPN URL processed from GET data submitted.', array(), WATCHDOG_NOTICE);
 
     #$ipn = drupal_get_query_parameters($Msg);
 
@@ -141,14 +157,7 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
     print_r ($pms);
 */
 
-    //echo '<pre>'; print_r($ipn); echo '</pre>'; 
 
-
-    // Exit now if the $_GET was empty.
-    if (empty($ipn)) {
-      watchdog('commerce_asciitb', 'IPN URL accessed with no GET data submitted.', array(), WATCHDOG_WARNING);
-      return FALSE;
-    }
 
   /* ASC does not validate IPN
 
@@ -198,15 +207,18 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
     }
   }
 
-  // Exit if the IPN has already been processed.
+  // Exit if the IPN has already been processed. TODO: find if transID is uniqueto ASC OP
+  /*
   if (!empty($ipn['transId']) && $prior_ipn = commerce_asciitb_ipn_load($ipn['transId'])) {
+      echo '<pre>'; echo 'IPN process check' ; echo '</pre>';
     if ($prior_ipn['status'] == $ipn['status']) {
+      echo '<pre>'; echo 'IPN already processed' ; echo '</pre>';
       watchdog('commerce_asciitb', 'Attempted to process an IPN that has already been processed with transaction ID @txn_id.', array('@txn_id' => $ipn['transId']), WATCHDOG_NOTICE);
       return FALSE;
     }
 
-    echo '<pre>'; echo 'IPN already processed' ; echo '</pre>';
   }
+  */
 
   // Load the order based on the IPN's invoice number (reqId).
   if (!empty($ipn['reqId']) && strpos($ipn['reqId'], '-') !== FALSE) {
@@ -229,11 +241,12 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
 
    /*
     echo 'loaded order <br/>';
-    echo '<pre>';
-    print_r ($order);
-    echo '</pre>';
-*/
+    echo "<br/> Order status 01 = $order->status <br/>";
+    //echo '<pre>';
+    //print_r ($order);
+    //echo '</pre>';
 
+*/
 
 
   /* No applicable to ASC
@@ -270,38 +283,48 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
     }
   }
 
+    //echo "<br/> Order status 02 = $order->status <br/>";
   // Invoke the hook here so implementations have access to the order and
   // payment method if available and a saved IPN array that includes the payment
   // transaction ID if created in the payment method's default process callback.
   module_invoke_all('commerce_asciitb_ipn_process', $order, $payment_method, $ipn);
 
+    //echo "<br/> Order status 03 = $order->status <br/>";
 
-   // Return to the previous page when payment is canceled
-   $cancel_return_url = url('checkout/' . $order->order_id . '/payment/back/' . $order->data['payment_redirect_key'], array('absolute' => TRUE));
+  // Do the final redirection
+  if( $ipn['requestType'] == 'I') { #Immediate response
 
-   // Return to the payment redirect page for processing successful payments
-   $return_url = url('checkout/' . $order->order_id . '/payment/return/' . $order->data['payment_redirect_key'], array('absolute' => TRUE));
+    switch ($ipn['status']) {
+      case 'F':
+        // Return to the previous page when payment is canceled
+        $return_path = url('checkout/' . $order->order_id . '/payment/back/' . $order->data['payment_redirect_key'], array('absolute' => TRUE));
+        break;
+
+      case 'S':
+        // Return to the payment redirect page for processing successful payments
+        $return_path = '/checkout/' . $order->order_id . '/payment/return/' . $order->data['payment_redirect_key'];
+        break;
+    }
+    //echo "<br/> <a href=" . $return_path .">return path</a>";
+    header('Location: ' . $return_path);
+  }
+  // else: no redirection for reconcile response
 
 
-   $return_path = '/checkout/' . $order->order_id . '/payment/return/' . $order->data['payment_redirect_key'];
-
-  //echo "<br/> $cancel_return_url";
+  //echo "<br/>Cancel url: $cancel_return_url <br/>";
   //drupal_goto($cancel_return_url);
   //echo "<br/> $return_url";
-   /*
-*/
 
-   $return_path = '/checkout/' . $order->order_id ;
+   //$return_path = '/checkout/' . $order->order_id ;
 
+    //echo 'ipn processed order <br/>';
 /*
-    echo 'ipn processed order <br/>';
     echo '<pre>';
     print_r ($order);
     echo '</pre>';
 */
   
-  echo "<br/> <a href=" . $return_path .">return path</a>";
-  echo "<br/> <a href=" . $return_url .">return url</a>";
+  //echo "<br/> <a href=" . $return_url .">return url</a>";
   #drupal_goto('/user/1/orders');
   #drupal_goto($return_path);
 
@@ -309,26 +332,25 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
   #echo "<br/> <a href=" . $target_uri .">return url</a>";
   #drupal_goto($target_uri);
 
+/*
   $path=$return_url;
   $http_response_code = 302;
   echo "<br/>path: $path";
-  
   $options=array();
-
   //drupal_alter('drupal_goto', $path, array(), $http_response_code);
   //drupal_alter('drupal_goto', $path, $options, $http_response_code);
   $options['absolute'] = TRUE;
-
   $url = url($path, $options);
-
   echo "<br/>path post alter: $path";
   echo "<br/>url: $url";
   //header('Location: ' . $url, TRUE, $http_response_code);
-  header('Location: ' . $url);
-  
+  //header('Location: ' . $url);
+ */
+ 
   #drupal_goto($return_path);
   //drupal_exit($url);
   //return $return_path;
+  //header('Location: ' . $return_path);
 }
 
 /**

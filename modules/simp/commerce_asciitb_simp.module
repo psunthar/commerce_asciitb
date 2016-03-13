@@ -6,6 +6,8 @@
  */
 
 
+
+
 /**
  * Implements hook_commerce_payment_method_info().
  */
@@ -238,9 +240,13 @@ function commerce_asciitb_simp_redirect_form_validate($order, $payment_method) {
     watchdog('commerce_asciitb_simp', 'Customer returned from ASC-IITB with the following GET data:!ipn_data', array('!ipn_data' => '<pre>' . check_plain(print_r($_GET, TRUE)) . '</pre>'), WATCHDOG_NOTICE);
   }
 
+  $msg = $_GET['sMsg'];
+    
+  parse_str($msg,$ipn);
+
   // This may be an unnecessary step, but if for some reason the user does end
   // up returning at the success URL with a Failed payment, go back.
-  if (!empty($_POST['status']) && $_POST['status'] == 'F') {
+  if (!empty($ipn['status']) && $ipn['status'] == 'F') {
     return FALSE;
   }
 }
@@ -267,6 +273,9 @@ function commerce_asciitb_simp_asciitb_ipn_validate($order, $payment_method, $ip
   foreach ($receiver_emails as $key => &$email) {
     $email = trim(strtolower($email));
   }
+
+
+  echo "<br/> Order status v0 = $order->status <br/>";
 
   // Return FALSE if the receiver e-mail does not match one specified by the
   // payment method instance.
@@ -296,59 +305,118 @@ function commerce_asciitb_simp_asciitb_ipn_validate($order, $payment_method, $ip
  * Payment method callback: process an IPN once it's been validated.
  */
 function commerce_asciitb_simp_asciitb_ipn_process($order, $payment_method, &$ipn) {
-  // Do not perform any processing on Simple Pay transactions here that do not have
-  // transaction IDs, indicating they are non-payment IPNs such as those used
-  // for subscription signup requests.
+
+  //echo "<br/> Order status s0 = $order->status <br/>";
+
+  // Do not perform any processing on transactions here that do not have
+  // transaction IDs, indicating they are non-payment IPNs 
+
   if (empty($ipn['transId'])) {
     return FALSE;
   }
 
-  // Exit when we don't get a payment status we recognize.
-  if (!in_array($ipn['status'], array('F', 'S' ))) {
-    commerce_payment_redirect_pane_previous_page($order);
-    return FALSE;
-  }
-
-  // If this is a prior authorization capture IPN for which we've already
-  // created a transaction...
-  if (in_array($ipn['status'], array('S')) &&
-    !empty($ipn['auth_id']) && $auth_ipn = commerce_asciitb_ipn_load($ipn['auth_id'])) {
-    // Load the prior IPN's transaction and update that with the capture values.
-    $transaction = commerce_payment_transaction_load($auth_ipn['transaction_id']);
-  }
-  else {
-    // Create a new payment transaction for the order.
-    $transaction = commerce_payment_transaction_new('asciitb_simp', $order->order_id);
-    $transaction->instance_id = $payment_method['instance_id'];
-  }
-
+	// Create a new payment transaction for the order.
+	$transaction = commerce_payment_transaction_new('asciitb_simp', $order->order_id);
+	$transaction->instance_id = $payment_method['instance_id'];
   $transaction->remote_id = $ipn['transId'];
   $transaction->amount = commerce_currency_decimal_to_amount($ipn['totalAmt'], $ipn['mc_currency']);
   $transaction->currency_code = $ipn['mc_currency'];
   $transaction->payload[REQUEST_TIME . '-ipn'] = $ipn;
 
-  // Set the transaction's statuses based on the IPN's status.
-  $transaction->remote_status = $ipn['status'];
+
+  switch( $ipn['requestType']) {
+    case 'I': #Immediate response
+    // Set the transaction's statuses based on the IPN's status.
+    $transaction->remote_status = $ipn['status'];
+
+		switch ($ipn['status']) {
+			case 'F':
+				$transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
+				$transaction->message = t("The payment has failed.");
+				commerce_payment_redirect_pane_previous_page($order);
+				break;
+
+			case 'S':
+				$transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+				$transaction->message = t('The payment was successful.');
+			  commerce_payment_redirect_pane_next_page($order);
+				break;
+			default:
+				// Exit when we don't get a payment status we recognize.
+				commerce_payment_redirect_pane_previous_page($order);
+				return FALSE;
+		}
+    break;
+    
+ 
+    case 'J': #Reconcile response
+      //$transaction->status = COMMERCE_PAYMENT_Recon_STATUS_Rejected;
+		  $transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
+      $transaction->message = t("The payment reconciliation was rejected.");
+			break;
+    case 'R': 
+      //$transaction->status = COMMERCE_PAYMENT_Recon_STATUS_Reconciled;
+		  $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+      $transaction->message = t('The payment reconciliation was successful.');
+			break;
+
+		default:
+      // Exit when we don't get a payment status we recognize.
+      return FALSE;
+  }
+
+  commerce_payment_transaction_save($transaction);
+  $ipn['transaction_id'] = $transaction->transaction_id;
+
+  watchdog('commerce_asciitb_simp', 'IPN processed for Order @order_number with ID @transId.', array('@transId' => $ipn['transId'], '@order_number' => $order->order_number), WATCHDOG_INFO);
+
+  // If this is a prior authorization capture IPN for which we've already
+  // created a transaction...
+  /*
+  if (in_array($ipn['status'], array('S')) &&
+    !empty($ipn['auth_id']) && $auth_ipn = commerce_asciitb_ipn_load($ipn['auth_id'])) {
+    // Load the prior IPN's transaction and update that with the capture values.
+    $transaction = commerce_payment_transaction_load($auth_ipn['transaction_id']);
+  //echo "<br/> Order status s1 = $order->status <br/>";
+  }
+  else {
+
+  echo "<br/> Order status s2 = $order->status <br/>";
+
+  }
+  */
+
+  //echo "<br/> Order status s3 = $order->status <br/>";
+
+
 
   // If we didn't get an approval response code...
-  switch ($ipn['status']) {
-    case 'F':
-      $transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
-      $transaction->message = t("The payment has failed.");
+/*	
+  if (!empty($ipn['status']) {
+
+  if (!empty($ipn['requestType']) {
+  switch ($ipn['requestType']) {
+    case 'J':
+      $transaction->status = COMMERCE_PAYMENT_Recon_STATUS_Rejected;
+      $transaction->message = t("The payment reconciliation was rejected.");
       break;
 
-    case 'S':
-      $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
-      $transaction->message = t('The payment was successful.');
+    case 'R':
+      $transaction->status = COMMERCE_PAYMENT_Recon_STATUS_Reconciled;
+      $transaction->message = t('The payment reconciliation was successful.');
       break;
   }
 
+
+  //echo "<br/> Order status s3.5 = $order->status <br/>";
   // Save the transaction information.
   commerce_payment_transaction_save($transaction);
+  //echo "<br/> Order status s3.6 = $order->status <br/>";
   $ipn['transaction_id'] = $transaction->transaction_id;
 
     //echo '<pre>'; echo 'transaction saved ' ; echo '</pre>';
 
+*/
 
   /* Not applicable to ASC 
   // Create a billing profile based on the IPN if enabled.
@@ -388,8 +456,9 @@ function commerce_asciitb_simp_asciitb_ipn_process($order, $payment_method, &$ip
     */
 
 
-  commerce_payment_redirect_pane_next_page($order);
-  watchdog('commerce_asciitb_simp', 'IPN processed for Order @order_number with ID @transId.', array('@transId' => $ipn['transId'], '@order_number' => $order->order_number), WATCHDOG_INFO);
+  //commerce_payment_redirect_pane_next_page($order);
+
+  //echo "<br/> Order status s4 = $order->status <br/>";
 }
 
 /**
