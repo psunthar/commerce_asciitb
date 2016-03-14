@@ -337,8 +337,9 @@ function commerce_asciitb_simp_asciitb_ipn_process($order, $payment_method, &$ip
 				break;
 
 			case 'S':
-				$transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
-				$transaction->message = t('The payment was successful.');
+				//$transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+				$transaction->status = COMMERCE_PAYMENT_STATUS_PENDING;
+				$transaction->message = t("The payment attempt was successful, pending bank's reconciliation. Check in two days.");
 			  commerce_payment_redirect_pane_next_page($order);
 				break;
 			default:
