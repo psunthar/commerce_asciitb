@@ -291,6 +291,8 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
 
     //echo "<br/> Order status 03 = $order->status <br/>";
 
+
+
   // Do the final redirection
   if( $ipn['requestType'] == 'I') { #Immediate response
 
@@ -306,7 +308,7 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
         break;
     }
     //echo "<br/> <a href=" . $return_path .">return path</a>";
-    header('Location: ' . $return_path);
+    //header('Location: ' . $return_path);
   }
   // else: no redirection for reconcile response
 
@@ -424,6 +426,7 @@ function commerce_asciitb_ipn_invoice($order) {
 /**
  * Returns an appropriate message given a pending reason.
  */
+/* Not relevant to IITB - sunthar
 function commerce_asciitb_ipn_pending_reason($pending_reason) {
   switch ($pending_reason) {
     case 'address':
@@ -450,134 +453,7 @@ function commerce_asciitb_ipn_pending_reason($pending_reason) {
       return t('The payment is pending for a reason other than those listed above. For more information, contact ASC-IITB Customer Service.');
   }
 }
-
-/**
- * Submits an API request to ASC-IITB.
- *
- * This function is currently used by ASC-IITB Payments Pro and Express Checkout.
- * This may not be required for ASC OP- Sunthar
- *
- * This function may be used for any ASC-IITB payment method that uses the same
- * settings array structure as these other payment methods and whose API
- * requests should be submitted to the same URLs as determined by the function
- * commerce_asciitb_api_server_url().
- *
- * @param $payment_method
- *   The payment method instance array associated with this API request.
- * @param $nvp
- *   The set of name-value pairs describing the transaction to submit.
- * @param $order
- *   The order the payment request is being made for.
- *
- * @return
- *   The response array from ASC-IITB if successful or FALSE on error.
- */
-function commerce_asciitb_api_request($payment_method, $nvp = array(), $order = NULL) {
-  // Get the API endpoint URL for the payment method's transaction mode.
-  $url = commerce_asciitb_api_server_url($payment_method['settings']['server']);
-
-  // Add the default name-value pairs to the array.
-  $nvp += array(
-    // API credentials
-    'USER' => $payment_method['settings']['api_username'],
-    'PWD' => $payment_method['settings']['api_password'],
-    'SIGNATURE' => $payment_method['settings']['api_signature'],
-    'VERSION' => '76.0',
-  );
-
-  // Allow modules to alter parameters of the API request.
-  drupal_alter('commerce_asciitb_api_request', $nvp, $order, $payment_method);
-
-  // Log the request if specified.
-  if ($payment_method['settings']['log']['request'] == 'request') {
-    // Mask the credit card number and CVV.
-    $log_nvp = $nvp;
-    $log_nvp['PWD'] = str_repeat('X', strlen($log_nvp['PWD']));
-    $log_nvp['SIGNATURE'] = str_repeat('X', strlen($log_nvp['SIGNATURE']));
-
-    if (!empty($log_nvp['ACCT'])) {
-      $log_nvp['ACCT'] = str_repeat('X', strlen($log_nvp['ACCT']) - 4) . substr($log_nvp['ACCT'], -4);
-    }
-
-    if (!empty($log_nvp['CVV2'])) {
-      $log_nvp['CVV2'] = str_repeat('X', strlen($log_nvp['CVV2']));
-    }
-
-    watchdog('commerce_asciitb', 'ASC-IITB API request to @url: !param', array('@url' => $url, '!param' => '<pre>' . check_plain(print_r($log_nvp, TRUE)) . '</pre>'), WATCHDOG_DEBUG);
-  }
-
-  // Prepare the name-value pair array to be sent as a string.
-  $pairs = array();
-
-  foreach ($nvp as $key => $value) {
-    $pairs[] = $key . '=' . urlencode($value);
-  }
-
-  // Setup the cURL request.
-  $ch = curl_init();
-  curl_setopt($ch, CURLOPT_URL, $url);
-  curl_setopt($ch, CURLOPT_VERBOSE, 0);
-  curl_setopt($ch, CURLOPT_POST, 1);
-  curl_setopt($ch, CURLOPT_POSTFIELDS, implode('&', $pairs));
-  curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-  curl_setopt($ch, CURLOPT_NOPROGRESS, 1);
-  curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 0);
-  curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 1);
-
-  // Commerce ASC-IITB requires SSL peer verification, which may prevent out of
-  // date servers from successfully processing API requests. If you get an error
-  // related to peer verification, you may need to download the CA certificate
-  // bundle file from http://curl.haxx.se/docs/caextract.html, place it in a
-  // safe location on your web server, and update your settings.php to set the
-  // commerce_asciitb_cacert variable to contain the absolute path of the file.
-  // Alternately, you may be able to update your php.ini to point to the file
-  // with the curl.cainfo setting.
-  if (variable_get('commerce_asciitb_cacert', FALSE)) {
-    curl_setopt($ch, CURLOPT_CAINFO, variable_get('commerce_asciitb_cacert', ''));
-  }
-
-  $result = curl_exec($ch);
-
-  // Log any errors to the watchdog.
-  if ($error = curl_error($ch)) {
-    watchdog('commerce_asciitb', 'cURL error: @error', array('@error' => $error), WATCHDOG_ERROR);
-    return FALSE;
-  }
-  curl_close($ch);
-
-  // Make the response an array.
-  $response = array();
-
-  foreach (explode('&', $result) as $nvp) {
-    list($key, $value) = explode('=', $nvp);
-    $response[urldecode($key)] = urldecode($value);
-  }
-
-  // Log the response if specified.
-  if ($payment_method['settings']['log']['response'] == 'response') {
-    watchdog('commerce_asciitb', 'ASC-IITB server response: !param', array('!param' => '<pre>' . check_plain(print_r($response, TRUE)) . '</pre>', WATCHDOG_DEBUG));
-  }
-
-  return $response;
-}
-
-/**
- * Returns the URL to the specified ASC-IITB API server.
- *
- * @param $server
- *   Either sandbox or live indicating which server to get the URL for.
- *
- * @return
- *   The URL to use to submit requests to the ASC-IITB API server.
- */
-function commerce_asciitb_api_server_url($server) {
-  switch ($server) {
-    case 'sandbox':
-      return 'https://api-3t.sandbox.asciitb.com/nvp';
-    case 'live':
-      return 'https://api-3t.asciitb.com/nvp';
-  }
-}
+*/
 
 /**
  * Loads the payment transaction matching the ASC-IITB transaction ID.
@@ -600,6 +476,8 @@ function commerce_asciitb_payment_transaction_load($txn_id) {
  *   The type of transaction whose payment action should be returned; currently
  *   supports COMMERCE_CREDIT_AUTH_CAPTURE and COMMERCE_CREDIT_AUTH_ONLY.
  */
+
+/* Not relevant to IITB - sunthar
 function commerce_asciitb_payment_action($txn_type) {
   switch ($txn_type) {
     case COMMERCE_CREDIT_AUTH_ONLY:
@@ -608,10 +486,12 @@ function commerce_asciitb_payment_action($txn_type) {
       return 'Sale';
   }
 }
+*/
 
 /**
  * Returns the description of a transaction type for a ASC-IITB payment action.
  */
+/* Not relevant to IITB - sunthar
 function commerce_asciitb_reverse_payment_action($payment_action) {
   switch (strtoupper($payment_action)) {
     case 'AUTHORIZATION':
@@ -620,7 +500,7 @@ function commerce_asciitb_reverse_payment_action($payment_action) {
       return t('Authorization and capture');
   }
 }
-
+*/
 /**
  * Returns an array of all possible currency codes for the different ASC-IITB
  * payment methods.
@@ -643,6 +523,7 @@ function commerce_asciitb_currencies($method_id) {
 /**
  * Returns an appropriate message given an AVS code.
  */
+/* Not relevant to IITB - sunthar
 function commerce_asciitb_avs_code_message($code) {
   if (is_numeric($code)) {
     switch ($code) {
@@ -694,10 +575,12 @@ function commerce_asciitb_avs_code_message($code) {
       return t('An unknown error occurred.');
   }
 }
+*/
 
 /**
  * Returns an appropriate message given a CVV2 match code.
  */
+/* Not relevant to IITB - sunthar
 function commerce_asciitb_cvv_match_message($code) {
   if (is_numeric($code)) {
     switch ($code) {
@@ -734,10 +617,12 @@ function commerce_asciitb_cvv_match_message($code) {
       return t('Not checked');
   }
 }
+*/
 
 /**
  * Returns a short description of the pending reason based on the given value.
  */
+/* Not relevant to IITB - sunthar
 function commerce_asciitb_short_pending_reason($pendingreason) {
   switch ($pendingreason) {
     case 'none':
@@ -762,6 +647,7 @@ function commerce_asciitb_short_pending_reason($pendingreason) {
       return '';
   }
 }
+*/
 
 /**
  * Returns an array of ASC-IITB payment methods.
@@ -771,9 +657,6 @@ function commerce_asciitb_payment_methods() {
     'visa' => t('Visa'),
     'mastercard' => t('Mastercard'),
     'amex' => t('American Express'),
-    'discover' => t('Discover'),
-    'echeck' => t('eCheck'),
-    'asciitb' => t('ASC-IITB'),
     'sbinet' => t('SBI Netbanking'),
     'cannet' => t('Canara Netbanking'),
   );

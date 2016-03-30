@@ -315,9 +315,9 @@ function commerce_asciitb_simp_asciitb_ipn_process($order, $payment_method, &$ip
     return FALSE;
   }
 
-	// Create a new payment transaction for the order.
-	$transaction = commerce_payment_transaction_new('asciitb_simp', $order->order_id);
-	$transaction->instance_id = $payment_method['instance_id'];
+  // Create a new payment transaction for the order.
+  $transaction = commerce_payment_transaction_new('asciitb_simp', $order->order_id);
+  $transaction->instance_id = $payment_method['instance_id'];
   $transaction->remote_id = $ipn['transId'];
   $transaction->amount = commerce_currency_decimal_to_amount($ipn['totalAmt'], $ipn['mc_currency']);
   $transaction->currency_code = $ipn['mc_currency'];
@@ -371,95 +371,39 @@ function commerce_asciitb_simp_asciitb_ipn_process($order, $payment_method, &$ip
 
   watchdog('commerce_asciitb_simp', 'IPN processed for Order @order_number with ID @transId.', array('@transId' => $ipn['transId'], '@order_number' => $order->order_number), WATCHDOG_INFO);
 
-  // If this is a prior authorization capture IPN for which we've already
-  // created a transaction...
-  /*
-  if (in_array($ipn['status'], array('S')) &&
-    !empty($ipn['auth_id']) && $auth_ipn = commerce_asciitb_ipn_load($ipn['auth_id'])) {
-    // Load the prior IPN's transaction and update that with the capture values.
-    $transaction = commerce_payment_transaction_load($auth_ipn['transaction_id']);
-  //echo "<br/> Order status s1 = $order->status <br/>";
+
+  // Prepare an array to POST back to ASC-IITB to acknowledge 
+  //$variables = urlencode("requestType=" . $ipn['requestType'] . "&transId= " . $ipn['transId']);  
+  //$variables = "requestType=" . $ipn['requestType'] . "&transId=" . $ipn['transId'];  
+  $variables = array(
+    'requestType' =>  $ipn['requestType'],
+    'transId'    =>  $ipn['transId'],  
+  );
+
+  // Determine the proper ASC-IITB server to POST to.
+  if ($payment_method['settings']['server'] == 'sandbox') {
+    $hosturl = 'http://10.99.99.139:8080/onlinepay/OnlinePayAckServlet';
+    $hosturl = 'http://www.iitb.ac.in/paygtest/ackw.php';
   }
   else {
-
-  echo "<br/> Order status s2 = $order->status <br/>";
-
-  }
-  */
-
-  //echo "<br/> Order status s3 = $order->status <br/>";
-
-
-
-  // If we didn't get an approval response code...
-/*	
-  if (!empty($ipn['status']) {
-
-  if (!empty($ipn['requestType']) {
-  switch ($ipn['requestType']) {
-    case 'J':
-      $transaction->status = COMMERCE_PAYMENT_Recon_STATUS_Rejected;
-      $transaction->message = t("The payment reconciliation was rejected.");
-      break;
-
-    case 'R':
-      $transaction->status = COMMERCE_PAYMENT_Recon_STATUS_Reconciled;
-      $transaction->message = t('The payment reconciliation was successful.');
-      break;
+    $hosturl = 'http://www.iitb.ac.in/onlinepay/OnlinePayAckServlet';
   }
 
+  //print_r( implode('&', $variables));
+  //print_r($variables);
+  $qurl = url($hosturl, array('query'=>$variables));
 
-  //echo "<br/> Order status s3.5 = $order->status <br/>";
-  // Save the transaction information.
-  commerce_payment_transaction_save($transaction);
-  //echo "<br/> Order status s3.6 = $order->status <br/>";
-  $ipn['transaction_id'] = $transaction->transaction_id;
+  // Process the HTTP request to acknowledge the IPN.
+  //$response = drupal_http_request($host, array('method' => 'GET', 'data' =>  $variables));
 
-    //echo '<pre>'; echo 'transaction saved ' ; echo '</pre>';
+  $response = drupal_http_request($qurl, array('method' => 'GET'));
 
-*/
+  echo '<pre>';
+  print_r($response);
+  echo 'Data </br>';
+  print_r($response->data);
+  echo '</pre>';
 
-  /* Not applicable to ASC 
-  // Create a billing profile based on the IPN if enabled.
-  if (!empty($payment_method['settings']['ipn_create_billing_profile']) && isset($order->commerce_customer_billing)) {
-    $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
-
-    // If this order does not have a billing profile yet...
-    if ($order_wrapper->commerce_customer_billing->value() === NULL) {
-      // Ensure we have the required data in the IPN.
-      if (empty($ipn['residence_country']) || empty($ipn['first_name']) || empty($ipn['last_name'])) {
-        $data = array_intersect_key($ipn, drupal_map_assoc(array('residence_country', 'first_name', 'last_name')));
-        watchdog('commerce_asciitb_simp', 'A billing profile for Order @order_number could not be created due to insufficient data in the IPN:!data', array('@order_number' => $order->order_number, '!data' => '<pre>'. check_plain(print_r($data, TRUE)) .'</pre>'), WATCHDOG_WARNING);
-      }
-      else {
-        // Create the new profile now.
-        $profile = commerce_customer_profile_new('billing', $order->uid);
-
-        // Add the address value.
-        $profile_wrapper = entity_metadata_wrapper('commerce_customer_profile', $profile);
-
-        $profile_wrapper->commerce_customer_address = array_merge(addressfield_default_values(), array(
-          'country' => $ipn['residence_country'],
-          'name_line' => $ipn['first_name'] . ' ' . $ipn['last_name'],
-          'first_name' => $ipn['first_name'],
-          'last_name' => $ipn['last_name'],
-        ));
-
-        // Save the profile, reference it from the order, and save the order.
-        $profile_wrapper->save();
-        $order_wrapper->commerce_customer_billing = $profile_wrapper;
-        $order_wrapper->save();
-
-        watchdog('commerce_asciitb_simp', 'Billing profile created for Order @order_number containing the first and last names and residence country of the customer based on IPN data.', array('@order_number' => $order->order_number));
-      }
-    }
-  }
-    */
-
-
-  //commerce_payment_redirect_pane_next_page($order);
-
-  //echo "<br/> Order status s4 = $order->status <br/>";
 }
 
 /**
@@ -611,7 +555,7 @@ function commerce_asciitb_simp_order_form($form, &$form_state, $order, $settings
   // Use the timestamp to generate a unique invoice number
   $ReqId=commerce_asciitb_ipn_invoice($order);
 
-  $smsg="sAppId=$AppId%26sUserId=$UserId%26sUserName=$UserName%26sAmountDue=$AmountDue%26sPurpose=$Purpose%26sReqId=$ReqId";
+  //$smsg="sAppId=$AppId%26sUserId=$UserId%26sUserName=$UserName%26sAmountDue=$AmountDue%26sPurpose=$Purpose%26sReqId=$ReqId";
   $smsg="sAppId=$AppId&sUserId=$UserId&sUserName=$UserName&sAmountDue=$AmountDue&sPurpose=$Purpose&sReqId=$ReqId";
 
 
