@@ -308,7 +308,7 @@ function commerce_asciitb_process_ipn($payment_method = NULL, $debug_ipn = array
         break;
     }
     //echo "<br/> <a href=" . $return_path .">return path</a>";
-    //header('Location: ' . $return_path);
+    header('Location: ' . $return_path);
   }
   // else: no redirection for reconcile response
 
@@ -654,11 +654,11 @@ function commerce_asciitb_short_pending_reason($pendingreason) {
  */
 function commerce_asciitb_payment_methods() {
   return array(
+    'sbinet' => t('SBI Netbanking'),
+    'cannet' => t('Canara Netbanking'),
     'visa' => t('Visa'),
     'mastercard' => t('Mastercard'),
     'amex' => t('American Express'),
-    'sbinet' => t('SBI Netbanking'),
-    'cannet' => t('Canara Netbanking'),
   );
 }
 

@@ -186,7 +186,8 @@ function commerce_asciitb_simp_form_commerce_checkout_form_alter(&$form, &$form_
       if ($method_id == 'asciitb_simp') {
         // Prepare the replacement radio button text with icons.
         $icons = commerce_asciitb_icons();
-        $value = t('!logo ASC-IITB - pay securely without sharing your financial information', array('!logo' => $icons['asciitb']));
+        //$value = t('!logo ASC-IITB - pay securely without sharing your financial information', array('!logo' => $icons['asciitb']));
+        $value = t('ASC-IITB - pay securely without sharing your financial information');
         $value .= '<div class="commerce-asciitb-icons"><span class="label">' . t('Includes:') . '</span>' . implode(' ', $icons) . '</div>';
 
         // Add the CSS.
@@ -398,11 +399,13 @@ function commerce_asciitb_simp_asciitb_ipn_process($order, $payment_method, &$ip
 
   $response = drupal_http_request($qurl, array('method' => 'GET'));
 
+  /*
   echo '<pre>';
   print_r($response);
   echo 'Data </br>';
   print_r($response->data);
   echo '</pre>';
+  */
 
 }
 
