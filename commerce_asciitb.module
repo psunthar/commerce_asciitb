@@ -656,6 +656,7 @@ function commerce_asciitb_payment_methods() {
   return array(
     'sbinet' => t('SBI Netbanking'),
     'cannet' => t('Canara Netbanking'),
+    'debit' => t('Debit cards'),
     'visa' => t('Visa'),
     'mastercard' => t('Mastercard'),
     'amex' => t('American Express'),
