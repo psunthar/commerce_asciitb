@@ -383,7 +383,8 @@ function commerce_asciitb_simp_asciitb_ipn_process($order, $payment_method, &$ip
 
   // Determine the proper ASC-IITB server to POST to.
   if ($payment_method['settings']['server'] == 'sandbox') {
-    $hosturl = 'http://10.99.99.139:8080/onlinepay/OnlinePayAckServlet';
+    //$hosturl = 'http://10.99.99.139:8080/onlinepay/OnlinePayAckServlet';
+    $hosturl = 'https://portal.iitb.ac.in/onlinepay/OnlinePayAckServlet';
     $hosturl = 'http://www.iitb.ac.in/paygtest/ackw.php';
   }
   else {
