@@ -544,6 +544,8 @@ function commerce_asciitb_simp_order_form($form, &$form_state, $order, $settings
 
   //$UserName='Sunthar P Murthy';
   $UserName=commerce_order_get_properties($order,array(),'mail_username');
+  $UserName = preg_replace('/\./', '', $UserName);
+
 
 
   $AmountDue=commerce_asciitb_price_amount(commerce_currency_convert($amount, $order_currency_code, $currency_code), $currency_code);
